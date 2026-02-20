@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+.DS_Store
+.ipynb_checkpoints/
+
+# Ignore heavy intermediate artifacts
+results/*ensemble*
+results/predictions_*
+results/kmer_*
+results/metrics.csv
+results/next_round.csv
+results/uncertainty_vs_score.png
+results/pareto_pred.png
+results/gate_yields.png
