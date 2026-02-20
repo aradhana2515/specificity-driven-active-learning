@@ -6,7 +6,7 @@ data/
 .DS_Store
 .ipynb_checkpoints/
 
-# Ignore heavy intermediate artifacts
+# Ignore heavy intermediate artifacts (keep key plots + summary csvs)
 results/*ensemble*
 results/predictions_*
 results/kmer_*
