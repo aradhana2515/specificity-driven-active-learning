@@ -1,222 +1,139 @@
 # Assay-Aware Closed-Loop Active Learning for Antibody Specificity Optimization
 
-This repository implements a simulation framework for antibody-like
-sequence optimization under realistic yeast display counter-selection
-constraints. The system explicitly models assay physics, FACS gating,
-sequencing-based enrichment, and multi-objective optimization to
-demonstrate closed-loop improvement of the specificity Pareto frontier
-across iterative rounds.
+A simulation framework for antibody-like sequence optimization under realistic yeast display counter-selection constraints. This project explicitly models assay physics, FACS gating, sequencing-based enrichment, and multi-objective acquisition to demonstrate closed-loop expansion of the specificity Pareto frontier across iterative rounds.
 
-------------------------------------------------------------------------
+> **Why this matters:** Most ML-based protein optimization frameworks treat fitness as a clean scalar. Real antibody campaigns don't. This project models the messy reality — expression-confounded signals, hard FACS gates, and the affinity/polyspecificity tradeoff — and shows that accounting for these constraints produces measurably better optimization.
+
+---
+
+## Results
+
+| Pareto Frontier Across Rounds | Hypervolume Expansion |
+|:---:|:---:|
+| ![Pareto Front](results/al_pareto_fronts.png) | ![Hypervolume](results/al_hypervolume.png) |
+
+Observed hypervolume increases monotonically across rounds (example run):
+
+| Round | Hypervolume |
+|:---:|:---:|
+| 1 | ~2.0 |
+| 2 | ~2.6 |
+| 3 | ~3.65 |
+
+---
+
+## Quickstart
+
+```bash
+git clone https://github.com/aradhana2515/specificity-driven-active-learning.git
+cd specificity-driven-active-learning
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+python scripts/04_active_learning_loop_cli.py --preset demo
+```
+
+Available presets:
+- `demo` — small candidate pool for fast execution
+- `full` — larger simulation for extended experiments
+
+---
 
 ## Scientific Motivation
 
 In real antibody engineering campaigns:
 
--   Fluorescence signal depends on antigen concentration.
--   Binding measurements are confounded by expression levels.
--   FACS gating imposes hard selection bottlenecks.
--   Counter-selection introduces a tradeoff between affinity and
-    polyspecificity.
--   Optimization must operate under assay-imposed constraints.
+- Fluorescence signal depends on antigen concentration
+- Binding measurements are confounded by expression levels
+- FACS gating imposes hard selection bottlenecks
+- Counter-selection creates a tradeoff between affinity and polyspecificity
 
-Most ML-based protein optimization frameworks ignore these dynamics.
+Most ML-based protein optimization frameworks ignore these dynamics. This project explicitly models assay-aware selection and demonstrates that incorporating these constraints enables measurable expansion of the observed specificity frontier.
 
-This project explicitly models assay-aware selection and demonstrates
-that incorporating these constraints enables measurable expansion of the
-observed specificity frontier across iterative rounds.
-
-------------------------------------------------------------------------
+---
 
 ## Problem Formulation
 
-Each variant has latent properties:
-
--   **True affinity**
--   **True stickiness** (polyspecificity propensity)
--   **Stability** (expression proxy)
+Each variant has three latent properties: true affinity, true stickiness (polyspecificity propensity), and stability (expression proxy).
 
 Observed assay signals are generated as:
 
-E \~ exp(stability + noise)\
-T \~ E \* f(affinity, antigen_concentration) + noise\
-O \~ E \* g(stickiness) + noise
+```
+E ~ exp(stability + noise)
+T ~ E * f(affinity, antigen_concentration) + noise
+O ~ E * g(stickiness) + noise
+```
 
-Antigen concentration decreases across rounds to simulate increasing
-stringency.
+Antigen concentration decreases across rounds to simulate increasing stringency. Optimization objectives are defined in expression-normalized space:
 
-Optimization objectives are defined in expression-normalized space:
+```
+t_norm = log(T / E)   # maximize
+o_norm = log(O / E)   # minimize
+```
 
-t_norm = log(T / E) (maximize)
-o_norm = log(O / E) (minimize)
+This mirrors real display campaigns where specificity must improve without conflating signal with expression.
 
-This mirrors real display campaigns where specificity must improve
-without conflating signal with expression.
-
-------------------------------------------------------------------------
+---
 
 ## FACS Gating Model
 
-Round 1 establishes absolute fluorescence thresholds based on quantiles:
+Round 1 establishes absolute fluorescence thresholds from quantiles (`E > e_thr`, `T > t_thr`, `O < o_thr`). These remain fixed for subsequent rounds, with the target threshold scaled to antigen concentration — mimicking real FACS practice where gates are set once and applied consistently. Sequencing counts are simulated pre- and post-sort to compute enrichment.
 
--   E \> e_thr
--   T \> t_thr
--   O \< o_thr
-
-These thresholds remain fixed in fluorescence space for subsequent
-rounds, with target threshold scaled proportionally to antigen
-concentration. This mimics real FACS practice where gates are designed
-once and applied consistently.
-
-Sequencing counts are simulated pre- and post-sort to compute
-enrichment.
-
-------------------------------------------------------------------------
+---
 
 ## Closed-Loop Active Learning
 
-Each round performs:
+Each round:
 
-1.  Simulate assay readouts under current antigen concentration.
+1. Simulates assay readouts under current antigen concentration
+2. Applies fixed FACS gates
+3. Computes sequencing enrichment
+4. Trains a bootstrap ensemble regressor on `y_tnorm`, `y_onorm`, `y_logE_expr`, `y_logE_enrich`
+5. Predicts mean and epistemic uncertainty on candidate pool
+6. Scores candidates via: `(t_norm - o_norm) + λ * σ`
+7. Enforces expression feasibility, Pareto filtering, and physicochemical diversity
+8. Selects next batch
 
-2.  Apply fixed FACS gates.
+The next round pool is a mixture of gate-selected survivors, model-proposed variants, and background diversity — simulating a realistic design–build–test–learn loop.
 
-3.  Simulate sequencing counts and compute enrichment.
+---
 
-4.  Train a bootstrap ensemble regressor on:
+## Modeling & Representation
 
-    -   y_tnorm
-    -   y_onorm
-    -   y_logE_expr
-    -   y_logE_enrich
+**Sequence features:** k-mer composition + physicochemical descriptors
 
-5.  Predict mean and epistemic uncertainty on candidate pool.
+**Model:** Bootstrap ensemble (Ridge regression) with mean prediction and ensemble standard deviation as uncertainty proxy
 
-6.  Compute acquisition score:
+**Acquisition:** Multi-objective exploitation (`t_norm - o_norm`) + uncertainty-driven exploration, with hard expression constraint and diversity enforcement in physicochemical space
 
-    (t_norm - o_norm) + lambda \* sigma
-
-7.  Enforce:
-
-    -   Expression feasibility constraint
-    -   Pareto filtering
-    -   Physicochemical diversity penalty
-
-8.  Select next batch.
-
-Next round pool is generated as a mixture of:
-
--   Gate-selected survivors
--   Model-proposed variants
--   Background diversity
-
-This simulates a realistic design--build--test--learn loop.
-
-------------------------------------------------------------------------
-
-## Multi-Objective Evaluation
-
-To quantify optimization progress, we compute the 2D Pareto front in
-(t_norm, o_norm) space and evaluate the observed hypervolume using a
-dominated reference point.
-
-Observed hypervolume increases across rounds (example run):
-
--   Round 1 → \~2.0
--   Round 2 → \~2.6
--   Round 3 → \~3.65
-
-This demonstrates measurable expansion of the specificity frontier under
-fixed gating constraints.
-
-Generated outputs:
-
--   results/al_pareto_fronts.png
-![Pareto](results/al_pareto_fronts.png)
--   results/al_hypervolume.png
-![Hypervolume](results/al_hypervolume.png)
--   results/al_hypervolume.csv
-
-------------------------------------------------------------------------
-
-## Representation and Modeling
-
-**Features** - k-mer sequence features - Physicochemical descriptors
-
-**Model** - Bootstrap ensemble (Ridge regression) - Mean prediction +
-ensemble standard deviation as uncertainty proxy
-
-**Acquisition Strategy** - Multi-objective exploitation (t_norm -
-o_norm) - Uncertainty-driven exploration - Hard expression constraint -
-Diversity enforcement in physicochemical space
-
-------------------------------------------------------------------------
-
-## Outputs
-
-The active learning loop generates:
-
--   results/al_gate_yields.png
--   results/al_pareto_fronts.png
--   results/al_hypervolume.png
--   results/al_hypervolume.csv
-
-Per round artifacts include:
-
--   Ensemble predictions
--   Selected sequences
--   Gate statistics
-
-------------------------------------------------------------------------
-
-## Installation
-
-Clone the repository:
-```
-git clone https://github.com/aradhana2515/specificity-driven-active-learning.git\
-cd specificity-driven-active-learning
-```
-Create a virtual environment:
-```
-python -m venv .venv\
-source .venv/bin/activate
-```
-Install dependencies:
-```
-pip install -r requirements.txt
-```
-------------------------------------------------------------------------
-
-## Quickstart
-
-Run a demo active learning loop:
-```
-python scripts/04_active_learning_loop_cli.py --preset demo
-```
-Available presets:
-
--   demo → small candidate pool for fast execution
--   full → larger simulation for extended experiments
-
-------------------------------------------------------------------------
+---
 
 ## Key Technical Contributions
 
--   Explicit modeling of assay-dependent signal generation
--   Expression-normalized optimization objectives
--   Fixed fluorescence-space gating across rounds
--   Multi-objective acquisition with uncertainty integration
--   Closed-loop simulation with quantitative frontier tracking
--   Hypervolume-based evaluation of specificity improvement
+- Explicit modeling of assay-dependent signal generation
+- Expression-normalized optimization objectives
+- Fixed fluorescence-space gating across rounds
+- Multi-objective acquisition with epistemic uncertainty
+- Closed-loop simulation with quantitative frontier tracking
+- Hypervolume-based evaluation of specificity improvement
 
-------------------------------------------------------------------------
+---
 
-## Summary
+## Outputs
 
-This project demonstrates that incorporating assay physics and gating
-constraints into active learning materially affects optimization
-dynamics and produces measurable expansion of the specificity Pareto
-frontier across rounds.
+```
+results/
+├── al_pareto_fronts.png     # Pareto frontier per round
+├── al_hypervolume.png       # Hypervolume expansion across rounds
+├── al_gate_yields.png       # Gate yield statistics
+└── al_hypervolume.csv       # Raw hypervolume values
+```
 
-It provides a structured foundation for integrating protein ML models
-into realistic antibody counter-selection workflows.
+---
+
+## Context
+
+An independent side project built to develop hands-on skills in 
+closed-loop active learning for protein engineering — complementing 
+my PhD work in directed evolution and immune specificity at Duke.
