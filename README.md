@@ -132,7 +132,9 @@ fixed gating constraints.
 Generated outputs:
 
 -   results/al_pareto_fronts.png
+[![Pareto](results/al_pareto_fronts.png)]
 -   results/al_hypervolume.png
+[![Hypervolume](results/al_hypervolume.png)]
 -   results/al_hypervolume.csv
 
 ------------------------------------------------------------------------
