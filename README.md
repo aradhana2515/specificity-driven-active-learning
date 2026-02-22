@@ -148,15 +148,27 @@ The active learning loop generates:
 
 ---
 
-## How to Run
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/aradhana2515/specificity-driven-active-learning.git
+cd specificity-driven-active-learning
+```
+
+## Create environment:
 
 ```
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export PYTHONPATH="$(pwd)/src:$PYTHONPATH"
+```
 
-python scripts/04_active_learning_loop.py
+Or if using `pyproject.toml`:
+
+```bash
+pip install -e .
 ```
 
 ---
@@ -177,3 +189,4 @@ python scripts/04_active_learning_loop.py
 This project demonstrates that incorporating assay physics and gating constraints into active learning materially affects optimization dynamics and produces measurable expansion of the specificity Pareto frontier across rounds.
 
 It provides a structured foundation for integrating protein ML models into realistic antibody counter-selection workflows.
+
